@@ -245,11 +245,23 @@ prompt_pure_async_git_fetch() {
 	GIT_TERMINAL_PROMPT=0 command git -c gc.auto=0 fetch
 }
 
+prompt_pure_async_start() {
+	async_start_worker "prompt_pure" -n
+	async_register_callback "prompt_pure" prompt_pure_async_callback
+}
+
+prompt_pure_async_flush() {
+	async_flush_jobs "prompt_pure"
+
+	# FIXME: work around a possible bug in zsh-async
+	async_stop_worker "prompt_pure"
+	prompt_pure_async_start
+}
+
 prompt_pure_async_tasks() {
 	# initialize async worker
 	((!${prompt_pure_async_init:-0})) && {
-		async_start_worker "prompt_pure" -u -n
-		async_register_callback "prompt_pure" prompt_pure_async_callback
+		prompt_pure_async_start
 		prompt_pure_async_init=1
 	}
 
@@ -259,7 +271,7 @@ prompt_pure_async_tasks() {
 	# check if the working tree changed (prompt_pure_current_working_tree is prefixed by "x")
 	if [[ ${prompt_pure_current_working_tree#x} != $working_tree ]]; then
 		# stop any running async jobs
-		async_flush_jobs "prompt_pure"
+		prompt_pure_async_flush
 
 		# reset git preprompt variables, switching working tree
 		unset prompt_pure_git_dirty
