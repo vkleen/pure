@@ -23,7 +23,6 @@
 # \e[K  => clears everything after the cursor on the current line
 # \e[2K => clear everything on the current line
 
-
 # turns seconds into human readable time
 # 165392 => 1d 21h 56m 32s
 # https://github.com/sindresorhus/pretty-time-zsh
@@ -44,12 +43,15 @@ prompt_pure_human_time_to_var() {
 
 # stores (into prompt_pure_cmd_exec_time) the exec time of the last command if set threshold was exceeded
 prompt_pure_check_cmd_exec_time() {
-	integer elapsed
-	(( elapsed = EPOCHSECONDS - ${prompt_pure_cmd_timestamp:-$EPOCHSECONDS} ))
-	prompt_pure_cmd_exec_time=
-	(( elapsed > ${PURE_CMD_MAX_EXEC_TIME:=5} )) && {
-		prompt_pure_human_time_to_var $elapsed "prompt_pure_cmd_exec_time"
-	}
+	unset prompt_pure_cmd_exec_time
+
+	if (( ${+prompt_pure_cmd_timestamp} )); then
+		local elapsed=$(( EPOCHSECONDS - prompt_pure_cmd_timestamp ))
+
+		if (( elapsed > ${PURE_CMD_MAX_EXEC_TIME:-5} )); then
+			prompt_pure_human_time_to_var $elapsed "prompt_pure_cmd_exec_time"
+		fi
+	fi
 }
 
 prompt_pure_clear_screen() {
@@ -59,29 +61,6 @@ prompt_pure_clear_screen() {
 	print -n '\e[2J\e[0;0H'
 	# print preprompt
 	prompt_pure_preprompt_render precmd
-}
-
-prompt_pure_check_git_arrows() {
-	# reset git arrows
-	prompt_pure_git_arrows=
-
-	# check if there is an upstream configured for this branch
-	command git rev-parse --abbrev-ref @'{u}' &>/dev/null || return
-
-	local arrow_status
-	# check git left and right arrow_status
-	arrow_status="$(command git rev-list --left-right --count HEAD...@'{u}' 2>/dev/null)"
-	# exit if the command failed
-	(( !$? )) || return
-
-	# left and right are tab-separated, split on tab and store as array
-	arrow_status=(${(ps:\t:)arrow_status})
-	local arrows left=${arrow_status[1]} right=${arrow_status[2]}
-
-	(( ${right:-0} > 0 )) && arrows+="${PURE_GIT_DOWN_ARROW:-⇣}"
-	(( ${left:-0} > 0 )) && arrows+="${PURE_GIT_UP_ARROW:-⇡}"
-
-	[[ -n $arrows ]] && prompt_pure_git_arrows=" ${arrows}"
 }
 
 prompt_pure_set_title() {
@@ -104,7 +83,7 @@ prompt_pure_set_title() {
 
 prompt_pure_preexec() {
 	# attempt to detect and prevent prompt_pure_async_git_fetch from interfering with user initiated git or hub fetch
-	[[ $2 =~ (git|hub)\ .*(pull|fetch) ]] && async_flush_jobs 'prompt_pure'
+	[[ $2 =~ (git|hub)\ .*(pull|fetch) ]] && prompt_pure_async_flush
 
 	prompt_pure_cmd_timestamp=$EPOCHSECONDS
 
@@ -124,24 +103,103 @@ prompt_pure_string_length_to_var() {
 
 prompt_pure_preprompt_render() {
 	# check that no command is currently running, the preprompt will otherwise be rendered in the wrong place
-	[[ -n ${prompt_pure_cmd_timestamp+x} && "$1" != "precmd" ]] && return
+	if (( ${+prompt_pure_cmd_timestamp} )) && [[ $1 != "precmd" ]]; then
+		return
+	fi
+
+	log "prompt_pure_preprompt_render: $(declare -p prompt_pure_vcs | tail -n1)"
 
 	# set color for git branch/dirty status, change color if dirty checking has been delayed
-	# git: highlight (base1 = 14)
-	# git-cached: violet = 13
-	local git_color=14
-	[[ -n ${prompt_pure_git_last_dirty_check_timestamp+x} ]] && git_color=13
+	if (( ${+prompt_pure_vcs[last_worktree_check]} )); then
+		# cached: violet = 13
+		local clr_worktree=13
+	else
+		# normal: highlight (base1 = 14)
+		local clr_worktree=14
+	fi
 
-	# construct preprompt, beginning with path
-	local preprompt="%F{blue}%~%f"
+	# set color for git upstream status, change color if fetching or if upstream checking has been delayed
+	if (( ${+prompt_pure_vcs[last_upstream_check]} )); then
+		# cached: violet = 13
+		local clr_upstream=13
+	elif (( ${prompt_pure_vcs[fetch]:-0} == 0 )); then
+		# fetch-in-process: yellow
+		local clr_upstream=yellow
+	elif (( ${prompt_pure_vcs[fetch]} < 0 )); then
+		# fetch-failed: red
+		local clr_upstream=red
+	else
+		# normal: cyan
+		local clr_upstream=cyan
+	fi
+
+	# data-na (in-process): secondary (base01 = 10)
+	local clr_na=10
+
+
+	# construct preprompt
+	local preprompt=() pp
+
+	# path
+	pp="%~"
+	preprompt+=("%F{blue}$pp%f")
+
 	# git info
-	preprompt+="%F{$git_color}${vcs_info_msg_0_}${prompt_pure_git_dirty}%f"
-	# git pull/push arrows
-	preprompt+="%F{cyan}${prompt_pure_git_arrows}%f"
+	if (( ${+prompt_pure_vcs[working_tree]} && ! ${+prompt_pure_vcs[unsure]} )); then
+		# branch and action
+		pp=""
+		[[ -n ${prompt_pure_vcs[action]} ]]  && pp+="${prompt_pure_vcs[action]}: "
+		[[ -n ${+prompt_pure_vcs[branch]} ]] && pp+="${prompt_pure_vcs[branch]}"
+
+		# worktree information (appended)
+		if (( ${prompt_pure_vcs[worktree]} )); then
+
+			(( ${prompt_pure_vcs[untracked]} )) && pp+=${PURE_GIT_UNTRACKED:-'.'}
+			(( ${prompt_pure_vcs[dirty]} ))     && pp+=${PURE_GIT_DIRTY:-'*'}
+			(( ${prompt_pure_vcs[staged]} ))    && pp+=${PURE_GIT_STAGED:-'+'}
+			(( ${prompt_pure_vcs[unmerged]} ))  && pp+=${PURE_GIT_UNMERGED:-'!'}
+
+		elif ! (( ${+prompt_pure_vcs[worktree]} )); then
+
+			pp+="%F{$clr_na}"
+			pp+=${PURE_GIT_WORKTREE_NA:-'?w'}
+
+		fi
+
+		[[ -n $pp ]] && preprompt+=("%F{$clr_worktree}$pp%f")
+
+		# upstream information
+		if (( ${prompt_pure_vcs[upstream]} )); then
+			local even=$(( ! ${prompt_pure_vcs[right]} && ! ${prompt_pure_vcs[left]} ))
+
+			pp=""
+			(( ${prompt_pure_vcs[right]} )) && pp+=${PURE_GIT_DOWN_ARROW:-'⇣'}
+			(( ${prompt_pure_vcs[left]} ))  && pp+=${PURE_GIT_UP_ARROW:-'⇡'}
+			(( ${even} ))                   && pp+=${PURE_GIT_EVEN_ARROW:-}
+			(( ${prompt_pure_vcs[fetch]:-0} == 0 )) && pp+=${PURE_GIT_FETCH_IN_PROCESS:-'(fetch...)'}
+			(( ${prompt_pure_vcs[fetch]:-0} < 0 ))  && pp+=${PURE_GIT_FETCH_FAILED:-'(fetch!)'}
+			[[ -n $pp ]] && preprompt+=("%F{$clr_upstream}$pp%f")
+
+		elif ! (( ${+prompt_pure_vcs[upstream]} )); then
+
+			pp=${PURE_GIT_UPSTREAM_NA:-'?u'}
+			[[ -n $pp ]] && preprompt+=("%F{$clr_na}$pp%f")
+
+		fi
+	fi
+
 	# username and machine if applicable
-	preprompt+=$prompt_pure_username
+	[[ -n $prompt_pure_username ]] && preprompt+=($prompt_pure_username)
+
 	# execution time
-	preprompt+="%F{yellow}${prompt_pure_cmd_exec_time}%f"
+	if (( ${+prompt_pure_cmd_exec_time} )); then
+		pp=${prompt_pure_cmd_exec_time}
+		[[ -n $pp ]] && preprompt+=("%F{yellow}$pp%f")
+	fi
+
+	# merge everything
+	log "prompt_pure_preprompt_render: $(declare -p preprompt | tail -n1)"
+	preprompt="$preprompt"
 
 	# if executing through precmd, do not perform fancy terminal editing
 	if [[ "$1" == "precmd" ]]; then
@@ -194,62 +252,143 @@ prompt_pure_preprompt_render() {
 
 	# store previous preprompt for comparison
 	prompt_pure_last_preprompt=$preprompt
+	log "drawn preprompt: '$preprompt'"
 }
 
 prompt_pure_precmd() {
 	# check exec time and store it in a variable
 	prompt_pure_check_cmd_exec_time
 
-	# by making sure that prompt_pure_cmd_timestamp is defined here the async functions are prevented from interfering
-	# with the initial preprompt rendering
-	prompt_pure_cmd_timestamp=
-
-	# check for git arrows
-	prompt_pure_check_git_arrows
-
 	# shows the full path in the title
 	prompt_pure_set_title 'expand-prompt' '%~'
 
-	# get vcs info
-	vcs_info
-
-	# preform async git dirty check and fetch
-	prompt_pure_async_tasks
+	# perform initial vcs data fetching, synchronously
+	prompt_pure_vcs_sync
 
 	# print the preprompt
 	prompt_pure_preprompt_render "precmd"
 
-	# remove the prompt_pure_cmd_timestamp, indicating that precmd has completed
+	# allow further preprompt rendering attempts
 	unset prompt_pure_cmd_timestamp
+
+	# perform the rest asynchronously after printing preprompt to avoid races
+	prompt_pure_vcs_async
+}
+
+prompt_pure_async_vcs_info() {
+	declare -A reply
+
+	# use cd -q to avoid side effects of changing directory, e.g. chpwd hooks
+	builtin cd -q "$*"
+
+	# get vcs info
+	vcs_info
+
+	# output results: working tree, branch, action
+	reply[working_tree]=${vcs_info_msg_0_}
+	reply[branch]=${vcs_info_msg_1_}
+	reply[action]=${vcs_info_msg_2_:#'(none)'}
+
+	declare -p reply
 }
 
 # fastest possible way to check if repo is dirty
 prompt_pure_async_git_dirty() {
-	local untracked_dirty=$1; shift
+	local dir=$1 untracked=$2
 
 	# use cd -q to avoid side effects of changing directory, e.g. chpwd hooks
-	builtin cd -q "$*"
+	builtin cd -q $dir
 
-	if [[ "$untracked_dirty" == "0" ]]; then
-		command git diff --no-ext-diff --quiet --exit-code
+	local args
+	if (( $untracked )); then
+		args=("-unormal")
 	else
-		test -z "$(command git status --porcelain --ignore-submodules -unormal)"
+		args=("-uno")
 	fi
 
-	(( $? )) && echo "*"
+	declare -A reply=(
+		worktree 0
+		unmerged 0
+		dirty 0
+		staged 0
+		untracked 0
+	)
+
+	local line
+	while IFS='' read -r line; do
+		case ${line:0:2} in
+		(DD|AA|?U|U?)
+			reply[unmerged]=1 ;;
+
+		(?[MD])
+			reply[dirty]=1 ;|
+
+		([MADRC]?)
+			reply[staged]=1 ;;
+
+		'??')
+			reply[untracked]=1 ;;
+
+		OK)
+			reply[worktree]=1 ;;
+		esac
+	done < <(git status --porcelain "${args[@]}" && echo OK)
+
+	declare -p reply
+}
+
+prompt_pure_async_git_upstream() {
+	local dir=$1
+
+	# use cd -q to avoid side effects of changing directory, e.g. chpwd hooks
+	builtin cd -q $dir
+
+	declare -A reply=(
+		upstream 0
+	)
+
+	# check if there is an upstream configured for this branch
+	if logcmd git rev-parse --abbrev-ref @'{u}'; then
+		# check git left and right arrow_status
+		local arrow_status
+		arrow_status="$(command git rev-list --left-right --count HEAD...@'{u}' 2>/dev/null)"
+
+		if (( !$? )); then
+			# left and right are tab-separated, split on tab and store as array
+			arrow_status=(${(ps:\t:)arrow_status})
+			reply[left]=${arrow_status[1]}
+			reply[right]=${arrow_status[2]}
+		fi
+
+		reply[upstream]=1
+	fi
+
+	declare -p reply
 }
 
 prompt_pure_async_git_fetch() {
+	local dir=$1
+
 	# use cd -q to avoid side effects of changing directory, e.g. chpwd hooks
-	builtin cd -q "$*"
+	builtin cd -q $dir
+
+	declare -A reply=(
+		fetch -1
+	)
 
 	# set GIT_TERMINAL_PROMPT=0 to disable auth prompting for git fetch (git 2.3+)
-	GIT_TERMINAL_PROMPT=0 command git -c gc.auto=0 fetch
+	GIT_TERMINAL_PROMPT=0 logcmd git -c gc.auto=0 fetch
+
+	if (( !$? )); then
+		reply[fetch]=1
+	fi
+
+	declare -p reply
 }
 
 prompt_pure_async_start() {
 	async_start_worker "prompt_pure" -n
-	async_register_callback "prompt_pure" prompt_pure_async_callback
+	async_register_callback "prompt_pure" prompt_pure_vcs_async_fsm
 }
 
 prompt_pure_async_flush() {
@@ -260,70 +399,217 @@ prompt_pure_async_flush() {
 	prompt_pure_async_start
 }
 
-prompt_pure_async_tasks() {
-	# initialize async worker
-	((!${prompt_pure_async_init:-0})) && {
-		prompt_pure_async_start
-		prompt_pure_async_init=1
-	}
-
-	# store working_tree without the "x" prefix
-	local working_tree="${vcs_info_msg_1_#x}"
-
-	# check if the working tree changed (prompt_pure_current_working_tree is prefixed by "x")
-	if [[ ${prompt_pure_current_working_tree#x} != $working_tree ]]; then
-		# stop any running async jobs
-		prompt_pure_async_flush
-
-		# reset git preprompt variables, switching working tree
-		unset prompt_pure_git_dirty
-		unset prompt_pure_git_last_dirty_check_timestamp
-
-		# set the new working tree and prefix with "x" to prevent the creation of a named path by AUTO_NAME_DIRS
-		prompt_pure_current_working_tree="x${working_tree}"
-	fi
-
-	# only perform tasks inside git working tree
-	[[ -n $working_tree ]] || return
-
-	# do not preform git fetch if it is disabled or working_tree == HOME
-	if (( ${PURE_GIT_PULL:-1} )) && [[ $working_tree != $HOME ]]; then
-		# tell worker to do a git fetch
-		async_job "prompt_pure" prompt_pure_async_git_fetch "${working_tree}"
-	fi
-
-	# if dirty checking is sufficiently fast, tell worker to check it again, or wait for timeout
-	integer time_since_last_dirty_check=$(( EPOCHSECONDS - ${prompt_pure_git_last_dirty_check_timestamp:-0} ))
-	if (( time_since_last_dirty_check > ${PURE_GIT_DELAY_DIRTY_CHECK:-1800} )); then
-		unset prompt_pure_git_last_dirty_check_timestamp
-		# check check if there is anything to pull
-		async_job "prompt_pure" prompt_pure_async_git_dirty "${PURE_GIT_UNTRACKED_DIRTY:-1}" "${working_tree}"
+prompt_pure_vcs_sync() {
+	# check if the working tree probably changed
+	if [[ $PWD != ${prompt_pure_vcs[pwd]} ]]; then
+		prompt_pure_vcs[unsure]=1
 	fi
 }
 
-prompt_pure_async_callback() {
+prompt_pure_vcs_async() {
+	async_job "prompt_pure" \
+		prompt_pure_async_vcs_info \
+		"$(builtin pwd)"
+}
+
+# this is a poor man's semi-state machine
+prompt_pure_vcs_async_fsm() {
 	local job=$1
 	local output=$3
 	local exec_time=$4
 
-	case "${job}" in
-		prompt_pure_async_git_dirty)
-			prompt_pure_git_dirty=$output
+	eval $output
+
+	if (( ${+reply} )); then
+		log "prompt_pure_async_fsm: job '$job' exec_time '$exec_time' reply '$(declare -p reply | grep '^reply=')'"
+	else
+		log "prompt_pure_async_fsm: job '$job' exec_time '$exec_time' no reply"
+	fi
+
+	case $job in
+		prompt_pure_async_vcs_info)
+			# only perform tasks inside git working tree
+			if ! [[ -n ${reply[working_tree]} ]]; then
+				prompt_pure_vcs=()
+				return
+			fi
+
+			# check if the working tree changed
+			if [[ ${reply[working_tree]} != ${prompt_pure_vcs[working_tree]} ]]; then
+				prompt_pure_vcs=()
+			else
+				noglob unset prompt_pure_vcs[unsure]
+				prompt_pure_vcs[pwd]=$PWD
+			fi
+
+			# merge in new data
+			prompt_pure_vcs+=("${(kv)reply[@]}")
+
+			# fake-"complete" the fetch if it is disabled
+			if ! (( ${PURE_GIT_FETCH:-0} )); then
+				prompt_pure_vcs[fetch]=1
+			fi
+
+			# now see if we have to refresh things
+			# 1. if "last" timestamp is not set, it means that the
+			# last refresh was sufficiently fast, so we would just
+			# retry it without erasing last status in between
+			# (so the stale status will be rendered first, then
+			# the actual one will be painted on top).
+			# 2. if "last" timestamp is set, it means that the
+			# refresh was not fast, so we unset the last status
+			# (so that a question mark will be rendered in meantime) and
+			# schedule a refresh.
+			# In this latter case, the renderer will also draw the
+			# status in a different color to indicate that it is
+			# probably out of date.
+			#
+			# We have three things to refresh:
+			# - "dirty" status (may be pretty slow)
+			# - commit counts vs. upstream (usually not so slow)
+			# - the upstream itself (fetch is _really_ slow and uses network)
+			#
+			# The worktree and upstream branch status are refreshed
+			# either each time (if it is fast, case 1) or once in
+			# 60 seconds (if not, case 2).
+			# The fetch will be done just once when entering the directory.
+
+			# worktree status ("dirty" checks)...
+			if (( ${+prompt_pure_vcs[last_worktree_check]} )) && \
+			   (( EPOCHSECONDS - ${prompt_pure_vcs[last_worktree_check]} \
+			      > ${PURE_GIT_DELAY_WORKTREE_CHECK:-60} )); then
+				log "triggering another worktree check by timer"
+				noglob unset prompt_pure_vcs[last_worktree_check] # trigger the async check
+				noglob unset prompt_pure_vcs[worktree] # mark data as N/A for renderer
+			fi
+
+			# upstream status...
+			if (( ${+prompt_pure_vcs[last_upstream_check]} )) && \
+			   (( EPOCHSECONDS - ${prompt_pure_vcs[last_upstream_check]} \
+			      > ${PURE_GIT_DELAY_UPSTREAM_CHECK:-60} )); then
+				log "triggering another upstream check by timer"
+				noglob unset prompt_pure_vcs[last_upstream_check] # trigger the async check
+				noglob unset prompt_pure_vcs[upstream] # mark data as N/A for renderer
+			fi
+
+			# fetch...
+			if (( ${+prompt_pure_vcs[last_fetch]} )) &&
+			   (( EPOCHSECONDS - ${prompt_pure_vcs[last_fetch]} \
+			      > ${PURE_GIT_DELAY_FETCH_RETRY:-10} )); then
+				log "triggering re-fetch by timer"
+				noglob unset prompt_pure_vcs[fetch] # trigger the fetch
+				noglob unset prompt_pure_vcs[last_fetch] # remove the re-fetch timer
+
+				# and trigger the upstream status check, which will chain-start the fetch
+				if (( ${+prompt_pure_vcs[last_upstream_check]} )); then
+					log "forcing another upstream check"
+					noglob unset prompt_pure_vcs[last_upstream_check] # trigger the async check
+					noglob unset prompt_pure_vcs[upstream] # mark data as N/A for renderer
+				fi
+			fi
+
+			# render what we've got
 			prompt_pure_preprompt_render
 
-			# When prompt_pure_git_last_dirty_check_timestamp is set, the git info is displayed in a different color.
-			# To distinguish between a "fresh" and a "cached" result, the preprompt is rendered before setting this
-			# variable. Thus, only upon next rendering of the preprompt will the result appear in a different color.
-			(( $exec_time > 2 )) && prompt_pure_git_last_dirty_check_timestamp=$EPOCHSECONDS
+			# spawn refreshers if we have to
+			# worktree status...
+			if ! (( ${+prompt_pure_vcs[last_worktree_check]} )); then
+				log "starting worktree check"
+				async_job "prompt_pure" \
+					prompt_pure_async_git_dirty \
+					${prompt_pure_vcs[working_tree]} \
+					${PURE_GIT_UNTRACKED:-1}
+			fi
+
+			# upstream status...
+			if ! (( ${+prompt_pure_vcs[last_upstream_check]} )); then
+				log "starting upstream check"
+				async_job "prompt_pure" \
+					prompt_pure_async_git_upstream \
+					${prompt_pure_vcs[working_tree]}
+			fi
 			;;
-		prompt_pure_async_git_fetch)
-			prompt_pure_check_git_arrows
+
+		prompt_pure_async_git_dirty)
+			# merge in new data
+			prompt_pure_vcs+=("${(kv)reply[@]}")
+
+			# render what we've got
 			prompt_pure_preprompt_render
+
+			if (( $exec_time > 2 )); then
+				# mark dirty check as lengthy
+				prompt_pure_vcs[last_worktree_check]=$EPOCHSECONDS
+			fi
+			;;
+
+		prompt_pure_async_git_upstream)
+			# merge in new data
+			prompt_pure_vcs+=("${(kv)reply[@]}")
+
+			# render what we've got
+			prompt_pure_preprompt_render
+
+			if (( $exec_time > 2 )); then
+				# mark upstream check as lengthy
+				prompt_pure_vcs[last_upstream_check]=$EPOCHSECONDS
+			fi
+
+			if (( ${prompt_pure_vcs[upstream]} && ! ${+prompt_pure_vcs[fetch]} )); then
+				# fetch upstream
+				log "starting fetch"
+				async_job "prompt_pure" \
+					prompt_pure_async_git_fetch \
+					${prompt_pure_vcs[working_tree]}
+
+				# mark fetch as "invoked"
+				prompt_pure_vcs[fetch]=0
+
+				# unarm re-fetch marker
+				unset "prompt_pure_vcs[last_fetch]"
+			fi
+			;;
+
+		prompt_pure_async_git_fetch)
+			# merge in new data
+			prompt_pure_vcs+=("${(kv)reply[@]}")
+
+			if (( ${prompt_pure_vcs[fetch]} < 0 )); then
+				# arm another fetch attempt
+				prompt_pure_vcs[last_fetch]=$EPOCHSECONDS
+			fi
+
+			# just re-run upstream checks
+			log "re-starting upstream check"
+			async_job "prompt_pure" \
+				prompt_pure_async_git_upstream \
+				${prompt_pure_vcs[working_tree]}
 			;;
 	esac
 }
 
 prompt_pure_setup() {
+
+	if (( ${+PURE_DEBUG} )); then
+		exec 3> >(systemd-cat -t zshpure)
+
+		function log() {
+			echo $* >&3
+		}
+
+		function logcmd() {
+			command "$@" >&3 2>&3
+		}
+	else
+		function log() {
+			:
+		}
+
+		function logcmd() {
+			command "$@" &>/dev/null
+		}
+	fi
+
 	# prevent percentage showing up
 	# if output doesn't end with a newline
 	export PROMPT_EOL_MARK=''
@@ -340,13 +626,65 @@ prompt_pure_setup() {
 	add-zsh-hook preexec prompt_pure_preexec
 
 	zstyle ':vcs_info:*' enable git
-	zstyle ':vcs_info:*' use-simple true
-	# only export two msg variables from vcs_info
-	zstyle ':vcs_info:*' max-exports 2
-	# vcs_info_msg_0_ = ' %b' (for branch)
-	# vcs_info_msg_1_ = 'x%R' git top level (%R), x-prefix prevents creation of a named path (AUTO_NAME_DIRS)
-	zstyle ':vcs_info:git*' formats ' %b' 'x%R'
-	zstyle ':vcs_info:git*' actionformats ' %b|%a' 'x%R'
+	zstyle ':vcs_info:*' max-exports 3
+	# 1) git root, 2) branch, 3) action (rebase/merge) or '(none)'
+	zstyle ':vcs_info:git*' formats '%R' '%b' '(none)'
+	zstyle ':vcs_info:git*' actionformats '%R' '%b' '%a'
+
+	#
+	# the array used to keep information about current working tree
+	#
+	# working_tree:
+	# - set = we are in vcs repository
+	# - contents = root of the current vcs repository
+	#
+	# unsure:
+	# - set = directory was changed and all other fields are stale
+	#
+	# action:
+	# - set = a special action (rebase/merge) exists in the repo
+	# - contents = name of the special action
+	#
+	# last_worktree_check:
+	# - set = worktree checking is throttled
+	# - unset = worktree check should be done next time
+	# - contents = ts of last check for throttling
+	#
+	# worktree:
+	# - set = the worktree check is completed (fields untracked, dirty, staged, unmerged)
+	# - unset = the worktree check is in progress
+	# - contents = whether the worktree check was successful
+	#
+	# untracked, dirty, staged, unmerged:
+	# - set = when worktree check has completed successfully
+	# - contents = whether the files of said category exist
+	#
+	# last_upstream_check:
+	# - set = upstream checking is throttled
+	# - unset = upstream check should be done next time
+	# - contents = ts of last check for throttling
+	#
+	# upstream:
+	# - set = the upstream check is completed (fields left, right)
+	# - unset = the upstream check is in progress
+	# - contents = whether the upstream exists
+	#
+	# left, right:
+	# - set = when upstream check has completed and the upstream exists
+	# - contents = amount of commits since merge base in local resp. tracking branches
+	#
+	# last_fetch:
+	# - set = re-fetch is armed
+	# - unset = no re-fetch should be done
+	#           NB: meaning of "unset" is inverted wrt. last_{worktree,upstream}_check
+	# - contents = ts of last fetch attempt
+	#
+	# fetch:
+	# - set = fetch has been initiated/completed (we do one fetch per repository)
+	# - unset = fetch has not been initiated
+	# - contents = 0: in progress, 1: completed successfully, -1: completed unsuccessfully
+	#
+	declare -gA prompt_pure_vcs
 
 	# if the user has not registered a custom zle widget for clear-screen,
 	# override the builtin one so that the preprompt is displayed correctly when
@@ -356,22 +694,25 @@ prompt_pure_setup() {
 	fi
 
 	# show username@host if logged in through SSH
-	[[ -n "$SSH_CONNECTION" ]] && {
+	if [[ -n "$SSH_CONNECTION" ]]; then
 		# ssh: green
 		prompt_pure_hostname='@%F{green}%m%f'
-	} || {
+	else
 		# normal: secondary (base01 = 10)
 		prompt_pure_hostname='@%F{10}%m%f'
-	}
+	fi
 
 	# privileged: bright white (base03 = 15)
 	# unprivileged; secondary (base01 = 10)
-	prompt_pure_username=" %(!.%F{15}.%F{10})%n$prompt_pure_hostname"
+	prompt_pure_username="%(!.%F{15}.%F{10})%n$prompt_pure_hostname"
 
 	# privileged: bright white (base03 = 15)
 	# unprivileged: highlight (base1 = 14)
 	# failed command: red
 	PROMPT="%(?.%(!.%F{15}.%F{14}).%F{red})${PURE_PROMPT_SYMBOL:-%(!.#.\$)}%f "
+
+	# initialize async worker
+	prompt_pure_async_start
 }
 
 prompt_pure_setup "$@"
