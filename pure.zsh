@@ -537,7 +537,7 @@ prompt_pure_vcs_async_fsm() {
 			# render what we've got
 			prompt_pure_preprompt_render
 
-			if (( $exec_time > 2 )); then
+			if (( $exec_time > 20 )); then
 				# mark dirty check as lengthy
 				prompt_pure_vcs[last_worktree_check]=$EPOCHSECONDS
 			fi
@@ -550,7 +550,7 @@ prompt_pure_vcs_async_fsm() {
 			# render what we've got
 			prompt_pure_preprompt_render
 
-			if (( $exec_time > 2 )); then
+			if (( $exec_time > 20 )); then
 				# mark upstream check as lengthy
 				prompt_pure_vcs[last_upstream_check]=$EPOCHSECONDS
 			fi

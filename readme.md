@@ -2,14 +2,18 @@
 
 > Pretty, minimal and fast ZSH prompt
 
-<img src="screenshot.png" width="550">
+This is a fork of [sindresorhus/pure](https://github.com/sindresorhus/pure), which aims towards:
+
+- more advanced and fully async git integration (even the branch name resolution does not slow your shell down), and
+- [Solarized](https://github.com/altercation/solarized)-friendly colors --- for machines and people!
+
+<img src="screenshot2.png" width="660">
 
 
 ## Overview
 
 Most prompts are cluttered, ugly and slow. I wanted something visually pleasing that stayed out of my way.
 
-*Now with more elaborate git integration and Solarized-friendly.*
 
 ### Why?
 
@@ -18,7 +22,7 @@ Most prompts are cluttered, ugly and slow. I wanted something visually pleasing 
 - Prompt character turns red if the last command didn't exit with `0`.
 - Command execution time will be displayed if it exceeds the set threshold.
 - Username and host are colored depending on UID and presence of the SSH session.
-- Shows the current path in the title and the [current folder & command](screenshot-title-cmd.png) when a process is running.
+- Shows the current path in the title and the current command when a process is running.
 - Makes an excellent starting point for your own custom prompt.
 
 
@@ -102,9 +106,7 @@ prompt pure
 
 ## Tips
 
-[Tomorrow Night Eighties](https://github.com/chriskempson/tomorrow-theme) theme with the [Droid Sans Mono](http://www.google.com/webfonts/specimen/Droid+Sans+Mono) font (15pt) is a beautiful combination, as seen in the screenshot above.<sup>1</sup> Just make sure you have anti-aliasing enabled in your Terminal.
-
-To have commands colorized as seen in the screenshot install [zsh-syntax-highlighting](https://github.com/zsh-users/zsh-syntax-highlighting).
+To have commands colorized as seen in the screenshot, install [zsh-syntax-highlighting](https://github.com/zsh-users/zsh-syntax-highlighting).
 
 <sup>1</sup> <sub>The screenshot shows the theme colors interpreted in the sRGB color space rather than the Generic RGB color space in which the theme is specified. Thus, the colors differ slightly from the theme's regular appearance.</sub>
 
