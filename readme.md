@@ -9,37 +9,22 @@
 
 Most prompts are cluttered, ugly and slow. I wanted something visually pleasing that stayed out of my way.
 
+*Now with more elaborate git integration and Solarized-friendly.*
+
 ### Why?
 
-- Comes with the perfect prompt character.
-  Author went through the whole Unicode range to find it.
-- Shows `git` branch and whether it's dirty (with a `*`).
-- Indicates when you have unpushed/unpulled `git` commits with up/down arrows. *(Check is done asynchronously!)*
+- Comes with the traditional `#` and `$` as the prompt characters.
+- Shows `git` branch, whether it has modified/staged/untracked files and upstream status with arrows. *All checks are asynchronous.*
 - Prompt character turns red if the last command didn't exit with `0`.
 - Command execution time will be displayed if it exceeds the set threshold.
-- Username and host only displayed when in an SSH session.
+- Username and host are colored depending on UID and presence of the SSH session.
 - Shows the current path in the title and the [current folder & command](screenshot-title-cmd.png) when a process is running.
 - Makes an excellent starting point for your own custom prompt.
 
 
 ## Install
 
-Can be installed with `npm` or manually. Requires git 2.0.0+ and ZSH 5.0.0+.
-
-### npm
-
-```console
-$ npm install --global pure-prompt
-```
-
-That's it. Skip to [Getting started](#getting-started).
-
-### Manually
-
-1. Either…
-  - Clone this repo
-  - add it as a submodule, or
-  - just download `pure.zsh` and `async.zsh`
+1. I don't care. Install it with whatever tools you want. No hipster-style `npm --global` installation or other bullshit included.
 
 2. Symlink `pure.zsh` to somewhere in [`$fpath`](http://www.refining-linux.org/archives/46/ZSH-Gem-12-Autoloading-functions/) with the name `prompt_pure_setup`.
 
@@ -81,33 +66,25 @@ prompt pure
 
 ## Options
 
-### `PURE_CMD_MAX_EXEC_TIME`
+Option                          | Explanation                                                     | Default
+------------------------------- | --------------------------------------------------------------- | ------------
+`PURE_CMD_MAX_EXEC_TIME`        | max execution time of a process before it is shown              | `5` seconds
+`PURE_GIT_FETCH`                | automatic `git fetch`, done only once per repo                  | `1`
+`PURE_GIT_FETCH_RETRY`          | timeout between `git fetch` retries if failed                   | `10` seconds
+`PURE_GIT_UNTRACKED`            | enables untracked files in worktree check (disable for speedup) | `1`
+`PURE_GIT_DELAY_WORKTREE_CHECK` | timeout between git worktree checks, when they take > 2 seconds | `60`
+`PURE_GIT_DELAY_UPSTREAM_CHECK` | timeout between git upstream checks, when they take > 2 seconds | `60`
+`PURE_PROMPT_SYMBOL`            | the command prompt symbol                                       | `#` or `$`
+`PURE_GIT_DOWN_ARROW`           | git info symbol: branch behind its upstream                     | `⇣`
+`PURE_GIT_UP_ARROW`             | git info symbol: branch ahead of its upstream                   | `⇡`
+`PURE_GIT_EVEN_ARROW`           | git info symbol: branch is even with its upstream               | empty string
+`PURE_GIT_FETCH_IN_PROGRESS`    | git info string: async fetch in progress                        | `(fetch...)`
+`PURE_GIT_FETCH_FAILED`         | git info string: async fetch failed, will retry                 | `(fetch!)`
+`PURE_GIT_UPSTREAM_NA`          | git info string: async upstream check in progress               | `?u`
+`PURE_GIT_WORKTREE_NA`          | git info string: async worktree check in progress               | `?w`
+`PURE_DEBUG`                    | debug output in systemd journal (`journalctl -t zshpure`)       | `0`
 
-The max execution time of a process before its run time is shown when it exits. Defaults to `5` seconds.
-
-### `PURE_GIT_PULL`
-
-Set `PURE_GIT_PULL=0` to prevent Pure from checking whether the current Git remote has been updated.
-
-### `PURE_GIT_UNTRACKED_DIRTY`
-
-Set `PURE_GIT_UNTRACKED_DIRTY=0` to not include untracked files in dirtiness check. Only really useful on extremely huge repos like the WebKit repo.
-
-### `PURE_GIT_DELAY_DIRTY_CHECK`
-
-Time in seconds to delay git dirty checking for large repositories (git status takes > 2 seconds). The check is performed asynchronously, this is to save CPU. Defaults to `1800` seconds.
-
-### `PURE_PROMPT_SYMBOL`
-
-Defines the prompt symbol. The default value is `❯`.
-
-### `PURE_GIT_DOWN_ARROW`
-
-Defines the git down arrow symbol. The default value is `⇣`.
-
-### `PURE_GIT_UP_ARROW`
-
-Defines the git up arrow symbol. The default value is `⇡`.
+The worktree/upstream checks are throttled when the last check takes > 2 seconds. This is to save CPU time.
 
 ## Example
 
@@ -131,36 +108,6 @@ To have commands colorized as seen in the screenshot install [zsh-syntax-highlig
 
 <sup>1</sup> <sub>The screenshot shows the theme colors interpreted in the sRGB color space rather than the Generic RGB color space in which the theme is specified. Thus, the colors differ slightly from the theme's regular appearance.</sub>
 
-## Integration
-
-### [oh-my-zsh](https://github.com/robbyrussell/oh-my-zsh)
-
-1. Symlink (or copy) `pure.zsh` to `~/.oh-my-zsh/custom/themes/pure.zsh-theme`.
-2. Set `ZSH_THEME="pure"` in your `.zshrc` file.
-
-### [prezto](https://github.com/sorin-ionescu/prezto)
-
-Pure is bundled with Prezto. No need to install it.
-
-Set `zstyle ':prezto:module:prompt' theme 'pure'` in `~/.zpreztorc`.
-
-### [antigen](https://github.com/zsh-users/antigen)
-
-Update your `.zshrc` file with the following two lines (order matters). Do not use the `antigen theme` function.
-
-```console
-$ antigen bundle mafredri/zsh-async
-$ antigen bundle sindresorhus/pure
-```
-
-### [antibody](https://github.com/getantibody/antibody)
-
-Update your `.zshrc` file with the following two lines (order matters):
-
-```console
-$ antibody bundle mafredri/zsh-async
-$ antibody bundle sindresorhus/pure
-```
 
 ## FAQ
 
@@ -190,23 +137,15 @@ $ sudo emerge -1 zsh
 
 On a default setup, running the command `kldload pty` should do the trick. If you have a custom kernel, you might need to add `device pty` to the configuration file ([example](https://github.com/nbari/freebsd/blob/58646a9c3c4aaabf6f6467ff505f27f09e29dc75/kernels/xen.kernel#L188)).
 
-## Ports
-
-* **Bash**
-	* [sapegin/dotfiles](https://github.com/sapegin/dotfiles)’s [prompt](https://github.com/sapegin/dotfiles/blob/master/includes/bash_prompt.bash) and [color theme](https://github.com/sapegin/dotfiles/tree/master/color) for `Terminal.app`.
-* **Fish**
-	* [brandonweiss/pure.fish](https://github.com/brandonweiss/pure.fish): a Pure-inspired prompt for Fish, not intended to have feature parity.
-	* [rafaelrinaldi/pure](https://github.com/rafaelrinaldi/pure), support for bare Fish and various framework ([Oh-My-Fish](https://github.com//oh-my-fish/oh-my-fish), [Fisherman](https://github.com//fisherman/fisherman) and [Wahoo](https://github.com//bucaran/wahoo)).
-* **Zsh**
-  * [therealklanni/purity](https://github.com/therealklanni/purity): a more compact current working directory, important details on the main prompt line, and extra Git indicators.
-
-## Team
-
-[![Sindre Sorhus](https://avatars.githubusercontent.com/u/170270?v=3&s=100)](http://sindresorhus.com) | [![Mathias Fredriksson](https://avatars.githubusercontent.com/u/147409?v=3&s=100)](https://github.com/mafredri)
----|---
-[Sindre Sorhus](http://sindresorhus.com) | [Mathias Fredriksson](https://github.com/mafredri)
-
 
 ## License
 
-MIT © [Sindre Sorhus](http://sindresorhus.com)
+Original code: MIT© [Sindre Sorhus](http://sindresorhus.com)
+
+Further work: Copyright (c) Ivan Shapovalov
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
