@@ -63,7 +63,7 @@ Initialize the prompt system (if not so already) and choose `pure`:
 
 ```sh
 # .zshrc
-autoload -U promptinit && promptinit
+autoload -U promptinit; promptinit
 prompt pure
 ```
 
@@ -95,7 +95,7 @@ The worktree/upstream checks are throttled when the last check takes > 2 seconds
 ```sh
 # .zshrc
 
-autoload -U promptinit && promptinit
+autoload -U promptinit; promptinit
 
 # optionally define some options
 PURE_CMD_MAX_EXEC_TIME=10
@@ -108,7 +108,6 @@ prompt pure
 
 To have commands colorized as seen in the screenshot, install [zsh-syntax-highlighting](https://github.com/zsh-users/zsh-syntax-highlighting).
 
-<sup>1</sup> <sub>The screenshot shows the theme colors interpreted in the sRGB color space rather than the Generic RGB color space in which the theme is specified. Thus, the colors differ slightly from the theme's regular appearance.</sub>
 
 
 ## FAQ
