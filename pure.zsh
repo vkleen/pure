@@ -715,18 +715,20 @@ prompt_pure_setup() {
 		zle -N clear-screen prompt_pure_clear_screen
 	fi
 
-	# show username@host if logged in through SSH
-	if [[ -n "$SSH_CONNECTION" ]]; then
+	# show username@host if logged in through SSH or if forced
+	if [[ -n $SSH_CONNECTION ]]; then
 		# ssh: green
 		prompt_pure_hostname='@%F{green}%m%f'
-	else
+	elif (( ${PURE_ALWAYS_SHOW_USER:-0} )); then
 		# normal: secondary (base01 = 10)
 		prompt_pure_hostname='@%F{10}%m%f'
 	fi
 
-	# privileged: bright white (base03 = 15)
-	# unprivileged; secondary (base01 = 10)
-	prompt_pure_username="%(!.%F{15}.%F{10})%n$prompt_pure_hostname"
+	if [[ -n $prompt_pure_hostname ]]; then
+		# privileged: bright white (base03 = 15)
+		# unprivileged; secondary (base01 = 10)
+		prompt_pure_username="%(!.%F{15}.%F{10})%n$prompt_pure_hostname"
+	fi
 
 	# privileged: bright white (base03 = 15)
 	# unprivileged: highlight (base1 = 14)

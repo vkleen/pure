@@ -87,6 +87,7 @@ Option                          | Explanation                                   
 `PURE_GIT_UPSTREAM_NA`          | git info string: async upstream check in progress               | `?u`
 `PURE_GIT_WORKTREE_NA`          | git info string: async worktree check in progress               | `?w`
 `PURE_DEBUG`                    | debug output in systemd journal (`journalctl -t zshpure`)       | `0`
+`PURE_ALWAYS_SHOW_USER`         | show `user@host` always, not only when connected through SSH    | `0`
 
 The worktree/upstream checks are throttled when the last check takes > 2 seconds. This is to save CPU time.
 
