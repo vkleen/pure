@@ -572,7 +572,7 @@ prompt_pure_vcs_async_fsm() {
 				prompt_pure_vcs[fetch]=0
 
 				# unarm re-fetch marker
-				unset "prompt_pure_vcs[last_fetch]"
+				noglob unset prompt_pure_vcs[last_fetch]
 			fi
 			;;
 
