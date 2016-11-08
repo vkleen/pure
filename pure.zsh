@@ -82,8 +82,14 @@ prompt_pure_set_title() {
 }
 
 prompt_pure_preexec() {
-	# attempt to detect and prevent prompt_pure_async_git_fetch from interfering with user initiated git or hub fetch
-	[[ $2 =~ (git|hub)\ .*(pull|fetch) ]] && prompt_pure_async_flush
+	# prevent async fetch (if it is running) from interfering with user-initiated fetch
+	if [[ ${prompt_pure_vcs[fetch]} == 0 && $2 =~ (git|hub)\ .*(pull|fetch) ]]; then
+		# kill running tasks
+		prompt_pure_async_flush
+
+		# mark fetch as "did not happen" (trigger another one post this command)
+		noglob unset prompt_pure_vcs[fetch]
+	fi
 
 	prompt_pure_cmd_timestamp=$EPOCHSECONDS
 
