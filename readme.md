@@ -91,6 +91,16 @@ Option                          | Explanation                                   
 
 The worktree/upstream checks are throttled when the last check takes > 2 seconds. This is to save CPU time.
 
+### Custom handlers
+
+There is a global array `prompt_pure_pieces` comprised of functions generating
+pieces of the preprompt. To add a custom entry to the preprompt, declare a function
+generating custom text and insert its name as an entry into the `prompt_pure_pieces`
+array.
+
+The custom function must return generated text by appending new entries to the
+`preprompt` array (declared in a parent scope) See below for an example.
+
 ## Example
 
 ```sh
@@ -101,7 +111,20 @@ autoload -U promptinit; promptinit
 # optionally define some options
 PURE_CMD_MAX_EXEC_TIME=10
 
+# optionally define custom generators
+prompt_custom() {
+	preprompt+=( custom )
+}
+
 prompt pure
+
+# add the generator where it's needed
+prompt_pure_pieces=(
+	${prompt_pure_pieces:0:2}
+	prompt_custom
+	${prompt_pure_pieces:2}
+)
+
 ```
 
 
