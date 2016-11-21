@@ -198,7 +198,7 @@ prompt_pure_preprompt_render() {
 	fi
 
 	# username and machine if applicable
-	[[ -n $prompt_pure_username ]] && preprompt+=($prompt_pure_username)
+	[[ -n $prompt_pure_hostname ]] && preprompt+=($prompt_pure_hostname)
 
 	# execution time
 	if (( ${+prompt_pure_cmd_exec_time} )); then
@@ -721,7 +721,7 @@ prompt_pure_setup() {
 	if [[ -n $prompt_pure_hostname ]]; then
 		# privileged: bright white (base03 = 15)
 		# unprivileged; secondary (base01 = 10)
-		prompt_pure_username="%(!.%F{15}.%F{10})%n$prompt_pure_hostname"
+		prompt_pure_hostname="%(!.%F{15}.%F{10})%n$prompt_pure_hostname"
 	fi
 
 	# privileged: bright white (base03 = 15)
