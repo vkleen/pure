@@ -104,20 +104,13 @@ prompt_pure_string_length() {
 	echo $(( ${#${(S%%)str//(\%([KF1]|)\{*\}|\%[Bbkf])}} ))
 }
 
-prompt_pure_preprompt_render() {
-	# store the current prompt_subst setting so that it can be restored later
-	local prompt_subst_status=$options[prompt_subst]
+prompt_pure_render_path() {
+	# path
+	pp="%~"
+	preprompt+=("%F{blue}$pp%f")
+}
 
-	# make sure prompt_subst is unset to prevent parameter expansion in preprompt
-	setopt local_options no_prompt_subst
-
-	# check that no command is currently running, the preprompt will otherwise be rendered in the wrong place
-	if (( ${+prompt_pure_cmd_timestamp} )) && [[ $1 != "precmd" ]]; then
-		return
-	fi
-
-	log "prompt_pure_preprompt_render: $(declare -p prompt_pure_vcs | tail -n1)"
-
+prompt_pure_render_vcs() {
 	# set color for git branch/dirty status, change color if dirty checking has been delayed
 	if (( ${+prompt_pure_vcs[last_worktree_check]} )); then
 		# cached: violet = 13
@@ -145,13 +138,7 @@ prompt_pure_preprompt_render() {
 	# data-na (in-process): secondary (base01 = 10)
 	local clr_na=10
 
-
-	# construct preprompt
-	local preprompt=() pp
-
-	# path
-	pp="%~"
-	preprompt+=("%F{blue}$pp%f")
+	log "prompt_pure_preprompt_render: $(declare -p prompt_pure_vcs | tail -n1)"
 
 	# git info
 	if (( ${+prompt_pure_vcs[working_tree]} && ! ${+prompt_pure_vcs[unsure]} )); then
@@ -196,17 +183,39 @@ prompt_pure_preprompt_render() {
 
 		fi
 	fi
+}
 
+prompt_pure_render_hostname() {
 	# username and machine if applicable
 	[[ -n $prompt_pure_hostname ]] && preprompt+=($prompt_pure_hostname)
+}
 
+prompt_pure_render_exec_time() {
 	# execution time
+	local pp=""
 	if (( ${+prompt_pure_cmd_exec_time} )); then
 		pp=${prompt_pure_cmd_exec_time}
 		[[ -n $pp ]] && preprompt+=("%F{yellow}$pp%f")
 	fi
+}
 
-	# merge everything
+prompt_pure_preprompt_render() {
+	# store the current prompt_subst setting so that it can be restored later
+	local prompt_subst_status=$options[prompt_subst]
+
+	# make sure prompt_subst is unset to prevent parameter expansion in preprompt
+	setopt local_options no_prompt_subst
+
+	# check that no command is currently running, the preprompt will otherwise be rendered in the wrong place
+	if (( ${+prompt_pure_cmd_timestamp} )) && [[ $1 != "precmd" ]]; then
+		return
+	fi
+
+	# construct preprompt
+	local preprompt=() pp
+	for f in $prompt_pure_pieces; do
+		$f
+	done
 	log "prompt_pure_preprompt_render: $(declare -p preprompt | tail -n1)"
 	preprompt="$preprompt"
 
@@ -728,6 +737,16 @@ prompt_pure_setup() {
 	# unprivileged: highlight (base1 = 14)
 	# failed command: red
 	PROMPT="%(?.%(!.%F{15}.%F{14}).%F{red})${PURE_PROMPT_SYMBOL:-%(!.#.\$)}%f "
+
+	# construct the array of prompt rendering callbacks
+	# a prompt rendering callback should append to the preprompt=() array
+	# declared in a parent scope
+	prompt_pure_pieces=(
+		prompt_pure_render_path
+		prompt_pure_render_vcs
+		prompt_pure_render_hostname
+		prompt_pure_render_exec_time
+	)
 
 	# initialize async worker
 	prompt_pure_async_start
