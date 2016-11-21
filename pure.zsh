@@ -98,13 +98,10 @@ prompt_pure_preexec() {
 }
 
 # string length ignoring ansi escapes
-prompt_pure_string_length_to_var() {
-	local str=$1 var=$2 length
+prompt_pure_string_length() {
+	local str=$1
 	# perform expansion on str and check length
-	length=$(( ${#${(S%%)str//(\%([KF1]|)\{*\}|\%[Bbkf])}} ))
-
-	# store string length in variable as specified by caller
-	typeset -g "${var}"="${length}"
+	echo $(( ${#${(S%%)str//(\%([KF1]|)\{*\}|\%[Bbkf])}} ))
 }
 
 prompt_pure_preprompt_render() {
@@ -224,16 +221,13 @@ prompt_pure_preprompt_render() {
 		[[ "${prompt_pure_last_preprompt[2]}" != "${(S%%)preprompt}" ]] || return
 
 		# calculate length of preprompt and store it locally in preprompt_length
-		integer preprompt_length lines
-		prompt_pure_string_length_to_var "${preprompt}" "preprompt_length"
-
+		integer preprompt_length=$(prompt_pure_string_length $preprompt)
 		# calculate number of preprompt lines for redraw purposes
-		(( lines = ( preprompt_length - 1 ) / COLUMNS + 1 ))
+		integer lines=$(( ( preprompt_length - 1 ) / COLUMNS + 1 ))
 
 		# calculate previous preprompt lines to figure out how the new preprompt should behave
-		integer last_preprompt_length last_lines
-		prompt_pure_string_length_to_var "${prompt_pure_last_preprompt[1]}" "last_preprompt_length"
-		(( last_lines = ( last_preprompt_length - 1 ) / COLUMNS + 1 ))
+		integer last_preprompt_length=$(prompt_pure_string_length "${prompt_pure_last_preprompt[1]}")
+		integer last_lines=$(( ( last_preprompt_length - 1 ) / COLUMNS + 1 ))
 
 		# clr_prev_preprompt erases visual artifacts from previous preprompt
 		local clr_prev_preprompt
