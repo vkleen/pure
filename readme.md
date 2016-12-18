@@ -28,6 +28,8 @@ Most prompts are cluttered, ugly and slow. I wanted something visually pleasing 
 
 ## Install
 
+Requires Git 2.0.0+ and ZSH 5.2+. Older versions of ZSH are known to work, but they are **not** recommended.
+
 1. I don't care. Install it with whatever tools you want. No hipster-style `npm --global` installation or other bullshit included.
 
 2. Symlink `pure.zsh` to somewhere in [`$fpath`](http://www.refining-linux.org/archives/46/ZSH-Gem-12-Autoloading-functions/) with the name `prompt_pure_setup`.
