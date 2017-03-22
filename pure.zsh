@@ -138,7 +138,7 @@ prompt_pure_render_vcs() {
 	# data-na (in-process): secondary (base01 = 10)
 	local clr_na=10
 
-	log "prompt_pure_preprompt_render: $(declare -p prompt_pure_vcs | command tail -n1)"
+	if (( log_enabled )); then log "prompt_pure_preprompt_render: $(declare -p prompt_pure_vcs | command tail -n1)"; fi
 
 	# git info
 	if (( ${+prompt_pure_vcs[working_tree]} && ! ${+prompt_pure_vcs[unsure]} )); then
@@ -216,7 +216,7 @@ prompt_pure_preprompt_render() {
 	for f in $prompt_pure_pieces; do
 		$f
 	done
-	log "prompt_pure_preprompt_render: $(declare -p preprompt | command tail -n1)"
+	if (( log_enabled )); then log "prompt_pure_preprompt_render: $(declare -p preprompt | command tail -n1)"; fi
 	preprompt="$preprompt"
 
 	# make sure prompt_pure_last_preprompt is a global array
@@ -444,9 +444,9 @@ prompt_pure_vcs_async_fsm() {
 	eval $output
 
 	if (( ${+reply} )); then
-		log "prompt_pure_async_fsm: job '$job' exec_time '$exec_time' reply '$(declare -p reply | grep '^reply=')'"
+		if (( log_enabled )); then log "prompt_pure_async_fsm: job '$job' exec_time '$exec_time' reply '$(declare -p reply | grep '^reply=')'"; fi
 	else
-		log "prompt_pure_async_fsm: job '$job' exec_time '$exec_time' no reply"
+		if (( log_enabled )); then log "prompt_pure_async_fsm: job '$job' exec_time '$exec_time' no reply"; fi
 	fi
 
 	case $job in
@@ -616,6 +616,8 @@ prompt_pure_setup() {
 	if (( ${+PURE_DEBUG} )); then
 		exec 3> >(systemd-cat -t zshpure)
 
+		declare -g log_enabled=1
+
 		function log() {
 			echo $* >&3
 		}
@@ -624,6 +626,8 @@ prompt_pure_setup() {
 			command "$@" >&3 2>&3
 		}
 	else
+		declare -g log_enabled=0
+
 		function log() {
 			:
 		}
