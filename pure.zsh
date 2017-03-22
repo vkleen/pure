@@ -138,7 +138,7 @@ prompt_pure_render_vcs() {
 	# data-na (in-process): secondary (base01 = 10)
 	local clr_na=10
 
-	log "prompt_pure_preprompt_render: $(declare -p prompt_pure_vcs | tail -n1)"
+	log "prompt_pure_preprompt_render: $(declare -p prompt_pure_vcs | command tail -n1)"
 
 	# git info
 	if (( ${+prompt_pure_vcs[working_tree]} && ! ${+prompt_pure_vcs[unsure]} )); then
@@ -216,7 +216,7 @@ prompt_pure_preprompt_render() {
 	for f in $prompt_pure_pieces; do
 		$f
 	done
-	log "prompt_pure_preprompt_render: $(declare -p preprompt | tail -n1)"
+	log "prompt_pure_preprompt_render: $(declare -p preprompt | command tail -n1)"
 	preprompt="$preprompt"
 
 	# make sure prompt_pure_last_preprompt is a global array
