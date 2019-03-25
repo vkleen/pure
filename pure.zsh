@@ -410,15 +410,12 @@ prompt_pure_async_git_fetch() {
 }
 
 prompt_pure_async_start() {
-	async_start_worker "prompt_pure" -n
+	async_start_worker "prompt_pure"
 	async_register_callback "prompt_pure" prompt_pure_vcs_async_fsm
 }
 
 prompt_pure_async_flush() {
 	async_flush_jobs "prompt_pure"
-
-	# FIXME: work around a possible bug in zsh-async
-	async_stop_worker "prompt_pure"
 	prompt_pure_async_start
 }
 
