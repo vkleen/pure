@@ -410,7 +410,7 @@ prompt_pure_async_git_fetch() {
 }
 
 prompt_pure_async_start() {
-	async_start_worker "prompt_pure"
+	async_start_worker "prompt_pure" -n
 	async_register_callback "prompt_pure" prompt_pure_vcs_async_fsm
 }
 
@@ -427,6 +427,9 @@ prompt_pure_vcs_sync() {
 }
 
 prompt_pure_vcs_async() {
+	# XXX: work around "async_job:zpty:12: no such pty command: prompt_pure"
+	# luckily, async_start_worker() and async_register_callback() are idempotent
+	prompt_pure_async_start
 	async_job "prompt_pure" \
 		prompt_pure_async_vcs_info \
 		"$(builtin pwd)"
