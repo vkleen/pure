@@ -381,9 +381,8 @@ prompt_pure_async_git_upstream() {
 			arrow_status=(${(ps:\t:)arrow_status})
 			reply[left]=${arrow_status[1]}
 			reply[right]=${arrow_status[2]}
+			reply[upstream]=1
 		fi
-
-		reply[upstream]=1
 	fi
 
 	declare -p reply
