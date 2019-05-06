@@ -409,7 +409,7 @@ prompt_pure_async_git_fetch() {
 }
 
 prompt_pure_async_start() {
-	async_start_worker "prompt_pure" -n
+	async_start_worker "prompt_pure"
 	async_register_callback "prompt_pure" prompt_pure_vcs_async_fsm
 }
 
