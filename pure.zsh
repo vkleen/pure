@@ -84,11 +84,7 @@ prompt_pure_set_title() {
 prompt_pure_preexec() {
 	# prevent async fetch (if it is running) from interfering with user-initiated fetch
 	if [[ ${prompt_pure_vcs[fetch]} == 0 && $2 =~ (git|hub)\ .*(pull|fetch) ]]; then
-		# kill running tasks
 		prompt_pure_async_flush
-
-		# mark fetch as "did not happen" (trigger another one post this command)
-		noglob unset prompt_pure_vcs[fetch]
 	fi
 
 	prompt_pure_cmd_timestamp=$EPOCHSECONDS
@@ -416,6 +412,14 @@ prompt_pure_async_start() {
 prompt_pure_async_flush() {
 	async_flush_jobs "prompt_pure"
 	prompt_pure_async_start
+
+	# if we had any jobs in progress, note that we've just cancelled them
+	if [[ ${prompt_pure_vcs[fetch]} == 0 ]]; then
+		# mark fetch as "did not happen" (trigger another one post this command)
+		log "flush while fetch running -- unsetting fetch status"
+		noglob unset prompt_pure_vcs[fetch]
+	fi
+	# worktree and local branch status do not record in-progress state, so nothing to reset
 }
 
 prompt_pure_vcs_sync() {
