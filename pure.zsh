@@ -112,7 +112,7 @@ prompt_pure_render_path() {
 
 prompt_pure_render_vcs() {
 	# set color for git branch/dirty status, change color if dirty checking has been delayed
-	if (( ${+prompt_pure_vcs[last_worktree_check]} )); then
+	if (( ${+prompt_pure_vcs[last_worktree]} )); then
 		# cached: violet = 13
 		local clr_worktree=13
 	else
@@ -121,7 +121,7 @@ prompt_pure_render_vcs() {
 	fi
 
 	# set color for git upstream status, change color if fetching or if upstream checking has been delayed
-	if (( ${+prompt_pure_vcs[last_upstream_check]} )); then
+	if (( ${+prompt_pure_vcs[last_upstream]} )); then
 		# cached: violet = 13
 		local clr_upstream=13
 	elif (( ${prompt_pure_vcs[fetch]:-0} == 0 )); then
@@ -467,50 +467,66 @@ prompt_pure_vcs_async_fsm() {
 			# merge in new data
 			prompt_pure_vcs+=("${(kv)reply[@]}")
 
-			# fake-"complete" the fetch if it is disabled
+			# if fetch is disabled, mark it as completed
 			if ! (( ${PURE_GIT_FETCH:-0} )); then
 				prompt_pure_vcs[fetch]=1
 			fi
 
-			# now see if we have to refresh things
-			# 1. if "last" timestamp is not set, it means that the
-			# last refresh was sufficiently fast, so we would just
-			# retry it without erasing last status in between
-			# (so the stale status will be rendered first, then
-			# the actual one will be painted on top).
-			# 2. if "last" timestamp is set, it means that the
-			# refresh was not fast, so we unset the last status
-			# (so that a question mark will be rendered in meantime) and
-			# schedule a refresh.
-			# In this latter case, the renderer will also draw the
-			# status in a different color to indicate that it is
-			# probably out of date.
+			# now see if we have to refresh advanced repository info
 			#
-			# We have three things to refresh:
-			# - "dirty" status (may be pretty slow)
-			# - commit counts vs. upstream (usually not so slow)
-			# - the upstream itself (fetch is _really_ slow and uses network)
+			# We have three advanced asynchronous checks:
+			# - worktree clean/dirty status (worktree) (may be pretty slow)
+			# - local branch upstream difference (upstream) (usually not so slow)
+			# - the upstream branch itself (fetch) (_really_ slow and uses network)
 			#
-			# The worktree and upstream branch status are refreshed
-			# either each time (if it is fast, case 1) or once in
-			# 60 seconds (if not, case 2).
-			# The fetch will be done just once when entering the directory.
+			# We also try to track whether the last asynchronous check was fast or not.
+			# The worktree and upstream difference checks are refreshed each time
+			# if they are fast or once in 60 seconds if they were slow.
+			# Fetch check is performed only once when entering the repository.
+			#
+			# To track check status, we use "worktree", "upstream" and "fetch" keys.
+			# They are set to 0 when a check is in progress, non-zero when the check
+			# is completed with either result (additional keys are set detailing the
+			# check report) and unset when a recheck is desired.
+			#
+			# To track check speed, we use "last_worktree", "last_upstream" and
+			# "last_fetch" keys. They are unset if the last refresh was sufficiently
+			# fast, otherwise they are set to the timestamp when the last refresh was
+			# completed.
+			#
+			# Both keys are set in respective completion handlers.
+			#
+			# Therefore our logic:
+			#
+			# 1. if the last refresh timestamp is not set, it means that the
+			# last refresh was sufficiently fast, so we simply schedule it
+			# without erasing the status (so the stale status will be rendered
+			# first, then the actual one will be painted on top).
+			# 2. if the last refresh timestamp is set, it means that the
+			# last refresh was slow, so we schedule a refresh and unset the status
+			# (so that a question mark will be rendered in while the refresh is
+			# in progress).
+			#
+			# When both the status and the last refresh timestamp is set,
+			# the renderer will use a different color to indicate that
+			# the status is likely out of date.
+			#
 
-			# worktree status ("dirty" checks)...
-			if (( ${+prompt_pure_vcs[last_worktree_check]} )) && \
-			   (( EPOCHSECONDS - ${prompt_pure_vcs[last_worktree_check]} \
+			# worktree status...
+			if (( ${+prompt_pure_vcs[last_worktree]} )) && \
+			   (( EPOCHSECONDS - ${prompt_pure_vcs[last_worktree]} \
 			      > ${PURE_GIT_DELAY_WORKTREE_CHECK:-60} )); then
 				log "triggering another worktree check by timer"
-				noglob unset prompt_pure_vcs[last_worktree_check] # trigger the async check
+				noglob unset prompt_pure_vcs[last_worktree] # force another async check
 				noglob unset prompt_pure_vcs[worktree] # mark data as N/A for renderer
 			fi
 
 			# upstream status...
-			if (( ${+prompt_pure_vcs[last_upstream_check]} )) && \
-			   (( EPOCHSECONDS - ${prompt_pure_vcs[last_upstream_check]} \
+			if (( ${+prompt_pure_vcs[last_upstream]} )) && \
+			   (( EPOCHSECONDS - ${prompt_pure_vcs[last_upstream]} \
 			      > ${PURE_GIT_DELAY_UPSTREAM_CHECK:-60} )); then
 				log "triggering another upstream check by timer"
-				noglob unset prompt_pure_vcs[last_upstream_check] # trigger the async check
+				noglob unset prompt_pure_vcs[last_upstream] # force another async check
 				noglob unset prompt_pure_vcs[upstream] # mark data as N/A for renderer
 			fi
 
@@ -518,14 +534,14 @@ prompt_pure_vcs_async_fsm() {
 			if (( ${+prompt_pure_vcs[last_fetch]} )) &&
 			   (( EPOCHSECONDS - ${prompt_pure_vcs[last_fetch]} \
 			      > ${PURE_GIT_DELAY_FETCH_RETRY:-10} )); then
-				log "triggering re-fetch by timer"
-				noglob unset prompt_pure_vcs[fetch] # trigger the fetch
+				log "triggering another fetch by timer"
+				noglob unset prompt_pure_vcs[fetch] # force another async fetch
 				noglob unset prompt_pure_vcs[last_fetch] # remove the re-fetch timer
 
-				# and trigger the upstream status check, which will chain-start the fetch
-				if (( ${+prompt_pure_vcs[last_upstream_check]} )); then
-					log "forcing another upstream check"
-					noglob unset prompt_pure_vcs[last_upstream_check] # trigger the async check
+				# fetch is triggered indirectly via the upstream status check handler, so trigger it too
+				if (( ${+prompt_pure_vcs[last_upstream]} )); then
+					log "triggering another upstream check to chain-start fetch"
+					noglob unset prompt_pure_vcs[last_upstream] # trigger the async check
 					noglob unset prompt_pure_vcs[upstream] # mark data as N/A for renderer
 				fi
 			fi
@@ -535,7 +551,7 @@ prompt_pure_vcs_async_fsm() {
 
 			# spawn refreshers if we have to
 			# worktree status...
-			if ! (( ${+prompt_pure_vcs[last_worktree_check]} )); then
+			if ! (( ${+prompt_pure_vcs[last_worktree]} )); then
 				log "starting worktree check"
 				async_job "prompt_pure" \
 					prompt_pure_async_git_dirty \
@@ -544,7 +560,7 @@ prompt_pure_vcs_async_fsm() {
 			fi
 
 			# upstream status...
-			if ! (( ${+prompt_pure_vcs[last_upstream_check]} )); then
+			if ! (( ${+prompt_pure_vcs[last_upstream]} )); then
 				log "starting upstream check"
 				async_job "prompt_pure" \
 					prompt_pure_async_git_upstream \
@@ -561,7 +577,7 @@ prompt_pure_vcs_async_fsm() {
 
 			if (( $exec_time > 20 )); then
 				# mark dirty check as lengthy
-				prompt_pure_vcs[last_worktree_check]=$EPOCHSECONDS
+				prompt_pure_vcs[last_worktree]=$EPOCHSECONDS
 			fi
 			;;
 
@@ -574,7 +590,7 @@ prompt_pure_vcs_async_fsm() {
 
 			if (( $exec_time > 20 )); then
 				# mark upstream check as lengthy
-				prompt_pure_vcs[last_upstream_check]=$EPOCHSECONDS
+				prompt_pure_vcs[last_upstream]=$EPOCHSECONDS
 			fi
 
 			if (( ${prompt_pure_vcs[upstream]} && ! ${+prompt_pure_vcs[fetch]} )); then
@@ -673,7 +689,7 @@ prompt_pure_setup() {
 	# - set = a special action (rebase/merge) exists in the repo
 	# - contents = name of the special action
 	#
-	# last_worktree_check:
+	# last_worktree:
 	# - set = worktree checking is throttled
 	# - unset = worktree check should be done next time
 	# - contents = ts of last check for throttling
@@ -687,7 +703,7 @@ prompt_pure_setup() {
 	# - set = when worktree check has completed successfully
 	# - contents = whether the files of said category exist
 	#
-	# last_upstream_check:
+	# last_upstream:
 	# - set = upstream checking is throttled
 	# - unset = upstream check should be done next time
 	# - contents = ts of last check for throttling
