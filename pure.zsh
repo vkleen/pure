@@ -412,7 +412,10 @@ prompt_pure_async_start() {
 prompt_pure_async_flush() {
 	async_flush_jobs "prompt_pure"
 	prompt_pure_async_start
+	prompt_pure_async_reset
+}
 
+prompt_pure_async_reset() {
 	# if we had any jobs in progress, note that we've just cancelled them
 	if [[ ${prompt_pure_vcs[fetch]} == 0 ]]; then
 		# mark fetch as "did not happen" (trigger another one post this command)
@@ -441,6 +444,7 @@ prompt_pure_vcs_async() {
 # this is a poor man's semi-state machine
 prompt_pure_vcs_async_fsm() {
 	local job=$1
+	local code=$2
 	local output=$3
 	local exec_time=$4
 
@@ -453,6 +457,13 @@ prompt_pure_vcs_async_fsm() {
 	fi
 
 	case $job in
+		'[async]')
+			if (( code == 2 )); then
+				# our worker died unexpectedly
+				prompt_pure_async_reset
+			fi
+			;;
+
 		prompt_pure_async_vcs_info)
 			# only perform tasks inside git working tree
 			if ! [[ -n ${reply[working_tree]} ]]; then
