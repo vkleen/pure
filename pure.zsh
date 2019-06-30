@@ -649,10 +649,11 @@ prompt_pure_setup() {
 		declare -g log_enabled=1
 
 		function log() {
-			echo $* >&3
+			echo "[$PWD] $*" >&3
 		}
 
 		function logcmd() {
+			echo -n "[$PWD] " >&3
 			command "$@" >&3 2>&3
 		}
 	else
