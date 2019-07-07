@@ -444,9 +444,6 @@ prompt_pure_vcs_sync() {
 }
 
 prompt_pure_vcs_async() {
-	# XXX: work around "async_job:zpty:12: no such pty command: prompt_pure"
-	# luckily, async_start_worker() and async_register_callback() are idempotent
-	prompt_pure_async_start
 	async_job "prompt_pure" \
 		prompt_pure_async_vcs_info \
 		"$(builtin pwd)"
@@ -471,8 +468,11 @@ prompt_pure_vcs_async_fsm() {
 		'[async]')
 			if (( code == 2 )); then
 				# our worker died unexpectedly
-				log "prompt_pure_vcs_async_fsm: worker died, resetting"
-				prompt_pure_async_reset
+				log "prompt_pure_vcs_async_fsm: worker died, restarting"
+				# XXX: work around "async_job:zpty:12: no such pty command: prompt_pure"
+				prompt_pure_async_flush
+				# XXX: do we want to restart async jobs here?
+				#prompt_pure_vcs_async
 			fi
 			;;
 
