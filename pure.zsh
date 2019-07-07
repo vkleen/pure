@@ -367,7 +367,7 @@ prompt_pure_async_git_upstream() {
 	)
 
 	# check if there is an upstream configured for this branch
-	if logcmd git rev-parse --abbrev-ref @'{u}'; then
+	if git rev-parse --abbrev-ref @'{u}' >/dev/null; then
 		# check git left and right arrow_status
 		local arrow_status
 		arrow_status="$(command git rev-list --left-right --count HEAD...@'{u}' 2>/dev/null)"
@@ -390,26 +390,36 @@ prompt_pure_async_git_fetch() {
 	# use cd -q to avoid side effects of changing directory, e.g. chpwd hooks
 	builtin cd -q $dir
 
+	log "prompt_pure_async_git_fetch: enter"
+
 	declare -A reply=(
 		fetch -1
 	)
 
+	log "prompt_pure_async_git_fetch: beginning fetch"
+
 	# set GIT_TERMINAL_PROMPT=0 to disable auth prompting for git fetch (git 2.3+)
-	GIT_TERMINAL_PROMPT=0 logcmd git -c gc.auto=0 fetch
+	GIT_TERMINAL_PROMPT=0 git -c gc.auto=0 fetch
 
 	if (( !$? )); then
 		reply[fetch]=1
 	fi
 
+	log "prompt_pure_async_git_fetch: completed fetch"
+
 	declare -p reply
+
+	log "prompt_pure_async_git_fetch: exit"
 }
 
 prompt_pure_async_start() {
+	log "prompt_pure_async_start: starting async worker"
 	async_start_worker "prompt_pure"
 	async_register_callback "prompt_pure" prompt_pure_vcs_async_fsm
 }
 
 prompt_pure_async_flush() {
+	log "prompt_pure_async_flush: stopping async worker"
 	async_flush_jobs "prompt_pure"
 	prompt_pure_async_start
 	prompt_pure_async_reset
@@ -419,7 +429,7 @@ prompt_pure_async_reset() {
 	# if we had any jobs in progress, note that we've just cancelled them
 	if [[ ${prompt_pure_vcs[fetch]} == 0 ]]; then
 		# mark fetch as "did not happen" (trigger another one post this command)
-		log "flush while fetch running -- unsetting fetch status"
+		log "prompt_pure_async_reset: flush while fetch running -- unsetting fetch status"
 		noglob unset prompt_pure_vcs[fetch]
 	fi
 	# worktree and local branch status do not record in-progress state, so nothing to reset
@@ -428,6 +438,7 @@ prompt_pure_async_reset() {
 prompt_pure_vcs_sync() {
 	# check if the working tree probably changed
 	if [[ $PWD != ${prompt_pure_vcs[pwd]} ]]; then
+		log "prompt_pure_vcs_sync: cwd changed '${prompt_pure_vcs[pwd]}' -> '$PWD', marking"
 		prompt_pure_vcs[unsure]=1
 	fi
 }
@@ -451,15 +462,16 @@ prompt_pure_vcs_async_fsm() {
 	eval $output
 
 	if (( ${+reply} )); then
-		if (( log_enabled )); then log "prompt_pure_async_fsm: job '$job' exec_time '$exec_time' reply '$(declare -p reply | grep '^reply=')'"; fi
+		log "prompt_pure_async_fsm: job '$job' exec_time '$exec_time' output '$output'"
 	else
-		if (( log_enabled )); then log "prompt_pure_async_fsm: job '$job' exec_time '$exec_time' no reply"; fi
+		log "prompt_pure_async_fsm: job '$job' exec_time '$exec_time' output '$output' no reply"
 	fi
 
 	case $job in
 		'[async]')
 			if (( code == 2 )); then
 				# our worker died unexpectedly
+				log "prompt_pure_vcs_async_fsm: worker died, resetting"
 				prompt_pure_async_reset
 			fi
 			;;
@@ -467,14 +479,17 @@ prompt_pure_vcs_async_fsm() {
 		prompt_pure_async_vcs_info)
 			# only perform tasks inside git working tree
 			if ! [[ -n ${reply[working_tree]} ]]; then
+				log "prompt_pure_vcs_async_fsm: not inside working tree, clearing"
 				prompt_pure_vcs=()
 				return
 			fi
 
 			# check if the working tree changed
 			if [[ ${reply[working_tree]} != ${prompt_pure_vcs[working_tree]} ]]; then
+				log "prompt_pure_vcs_async_fsm: working tree changed '${prompt_pure_vcs[working_tree]}' -> '${reply[working_tree]}', clearing"
 				prompt_pure_vcs=()
 			else
+				log "prompt_pure_vcs_async_fsm: working tree confirmed '${prompt_pure_vcs[working_tree]}', unmarking"
 				noglob unset prompt_pure_vcs[unsure]
 				prompt_pure_vcs[pwd]=$PWD
 			fi
@@ -531,7 +546,7 @@ prompt_pure_vcs_async_fsm() {
 			if (( ${+prompt_pure_vcs[last_worktree]} )) && \
 			   (( EPOCHSECONDS - ${prompt_pure_vcs[last_worktree]} \
 			      > ${PURE_GIT_DELAY_WORKTREE_CHECK:-60} )); then
-				log "triggering another worktree check by timer"
+				log "prompt_pure_vcs_async_fsm: triggering another worktree check by timer"
 				noglob unset prompt_pure_vcs[last_worktree] # force another async check
 				noglob unset prompt_pure_vcs[worktree] # mark data as N/A for renderer
 			fi
@@ -540,7 +555,7 @@ prompt_pure_vcs_async_fsm() {
 			if (( ${+prompt_pure_vcs[last_upstream]} )) && \
 			   (( EPOCHSECONDS - ${prompt_pure_vcs[last_upstream]} \
 			      > ${PURE_GIT_DELAY_UPSTREAM_CHECK:-60} )); then
-				log "triggering another upstream check by timer"
+				log "prompt_pure_vcs_async_fsm: triggering another upstream check by timer"
 				noglob unset prompt_pure_vcs[last_upstream] # force another async check
 				noglob unset prompt_pure_vcs[upstream] # mark data as N/A for renderer
 			fi
@@ -549,7 +564,7 @@ prompt_pure_vcs_async_fsm() {
 			if (( ${+prompt_pure_vcs[last_fetch]} )) &&
 			   (( EPOCHSECONDS - ${prompt_pure_vcs[last_fetch]} \
 			      > ${PURE_GIT_DELAY_FETCH_RETRY:-10} )); then
-				log "triggering another fetch by timer"
+				log "prompt_pure_vcs_async_fsm: triggering another fetch by timer"
 				noglob unset prompt_pure_vcs[fetch] # force another async fetch
 				noglob unset prompt_pure_vcs[last_fetch] # remove the re-fetch timer
 
@@ -562,12 +577,13 @@ prompt_pure_vcs_async_fsm() {
 			fi
 
 			# render what we've got
+			log "prompt_pure_vcs_async_fsm: will render"
 			prompt_pure_preprompt_render
 
 			# spawn refreshers if we have to
 			# worktree status...
 			if ! (( ${+prompt_pure_vcs[last_worktree]} )); then
-				log "starting worktree check"
+				log "prompt_pure_vcs_async_fsm: starting worktree check"
 				async_job "prompt_pure" \
 					prompt_pure_async_git_dirty \
 					${prompt_pure_vcs[working_tree]} \
@@ -576,7 +592,7 @@ prompt_pure_vcs_async_fsm() {
 
 			# upstream status...
 			if ! (( ${+prompt_pure_vcs[last_upstream]} )); then
-				log "starting upstream check"
+				log "prompt_pure_vcs_async_fsm: starting upstream check"
 				async_job "prompt_pure" \
 					prompt_pure_async_git_upstream \
 					${prompt_pure_vcs[working_tree]}
@@ -610,7 +626,7 @@ prompt_pure_vcs_async_fsm() {
 
 			if (( ${prompt_pure_vcs[upstream]} && ! ${+prompt_pure_vcs[fetch]} )); then
 				# fetch upstream
-				log "starting fetch"
+				log "prompt_pure_vcs_async_fsm: starting fetch"
 				async_job "prompt_pure" \
 					prompt_pure_async_git_fetch \
 					${prompt_pure_vcs[working_tree]}
@@ -633,7 +649,7 @@ prompt_pure_vcs_async_fsm() {
 			fi
 
 			# just re-run upstream checks
-			log "re-starting upstream check"
+			log "prompt_pure_vcs_async_fsm: re-starting upstream check"
 			async_job "prompt_pure" \
 				prompt_pure_async_git_upstream \
 				${prompt_pure_vcs[working_tree]}
