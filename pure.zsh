@@ -480,6 +480,7 @@ prompt_pure_vcs_async_fsm() {
 			# only perform tasks inside git working tree
 			if ! [[ -n ${reply[working_tree]} ]]; then
 				log "prompt_pure_vcs_async_fsm: not inside working tree, clearing"
+				prompt_pure_async_flush
 				prompt_pure_vcs=()
 				return
 			fi
@@ -487,12 +488,13 @@ prompt_pure_vcs_async_fsm() {
 			# check if the working tree changed
 			if [[ ${reply[working_tree]} != ${prompt_pure_vcs[working_tree]} ]]; then
 				log "prompt_pure_vcs_async_fsm: working tree changed '${prompt_pure_vcs[working_tree]}' -> '${reply[working_tree]}', clearing"
+				prompt_pure_async_flush
 				prompt_pure_vcs=()
 			else
 				log "prompt_pure_vcs_async_fsm: working tree confirmed '${prompt_pure_vcs[working_tree]}', unmarking"
 				noglob unset prompt_pure_vcs[unsure]
-				prompt_pure_vcs[pwd]=$PWD
 			fi
+			prompt_pure_vcs[pwd]=$PWD
 
 			# merge in new data
 			prompt_pure_vcs+=("${(kv)reply[@]}")
